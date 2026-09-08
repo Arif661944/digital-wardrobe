@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000" fill="none">
+  <rect width="800" height="1000" fill="#F3EEE6"/>
+  <path d="M300 280c0-55 45-90 100-90s100 35 100 90c8 70 40 120 40 190 0 90-50 150-140 150s-140-60-140-150c0-70 32-120 40-190z" stroke="#C4B8A8" stroke-width="8" fill="#E8E0D4"/>
+  <path d="M280 720h240" stroke="#C4B8A8" stroke-width="6" stroke-linecap="round"/>
+  <text x="400" y="820" text-anchor="middle" fill="#8A7B6B" font-family="Georgia, serif" font-size="28">Atelier</text>
+</svg>
