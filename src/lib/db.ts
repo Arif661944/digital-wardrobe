@@ -1,5 +1,5 @@
 import { neon } from "@neondatabase/serverless";
-import { put } from "@vercel/blob";
+import { get, put } from "@vercel/blob";
 import { normalizeItem } from "./seasons";
 import { defaultState } from "./wardrobe-default";
 import type { ClothingItem, WardrobeState } from "./types";
@@ -87,19 +87,35 @@ function extensionFor(mime: string) {
   return "png";
 }
 
+function blobPutOptions(mime: string) {
+  return {
+    addRandomSuffix: true as const,
+    contentType: mime || "image/jpeg",
+    token: blobToken(),
+  };
+}
+
+async function putToStore(pathname: string, body: Buffer | Blob, mime: string) {
+  const options = blobPutOptions(mime);
+  try {
+    return await put(pathname, body, { ...options, access: "private" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.toLowerCase().includes("public")) {
+      return await put(pathname, body, { ...options, access: "public" });
+    }
+    throw error;
+  }
+}
+
 export async function uploadBytes(bytes: Buffer, mime: string) {
   if (!hasBlobStore()) {
     return `data:${mime};base64,${bytes.toString("base64")}`;
   }
-  const blob = await put(
+  const blob = await putToStore(
     `wardrobe/${crypto.randomUUID()}.${extensionFor(mime)}`,
     bytes,
-    {
-      access: "public",
-      addRandomSuffix: true,
-      contentType: mime || "image/jpeg",
-      token: blobToken(),
-    },
+    mime,
   );
   return blob.url;
 }
@@ -109,17 +125,35 @@ export async function uploadBlobFile(file: Blob, mime = file.type || "image/jpeg
     const bytes = Buffer.from(await file.arrayBuffer());
     return `data:${mime};base64,${bytes.toString("base64")}`;
   }
-  const blob = await put(
+  const blob = await putToStore(
     `wardrobe/${crypto.randomUUID()}.${extensionFor(mime)}`,
     file,
-    {
-      access: "public",
-      addRandomSuffix: true,
-      contentType: mime,
-      token: blobToken(),
-    },
+    mime,
   );
   return blob.url;
+}
+
+export function isVercelBlobUrl(url: string) {
+  try {
+    const host = new URL(url).hostname;
+    return host.endsWith("blob.vercel-storage.com");
+  } catch {
+    return false;
+  }
+}
+
+export async function readBlobFile(url: string) {
+  if (!isVercelBlobUrl(url)) return null;
+  const options = { token: blobToken() };
+  for (const access of ["private", "public"] as const) {
+    try {
+      const result = await get(url, { ...options, access });
+      if (result?.stream) return result;
+    } catch {
+      // Try the other access mode.
+    }
+  }
+  return null;
 }
 
 export async function uploadDataUrl(dataUrl: string) {
