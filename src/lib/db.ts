@@ -79,19 +79,23 @@ function extensionFor(mime: string) {
   return "png";
 }
 
-export async function uploadDataUrl(dataUrl: string) {
-  if (!dataUrl.startsWith("data:")) return dataUrl;
-  if (!hasBlobStore()) return dataUrl;
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) return dataUrl;
-  const mime = match[1];
-  const bytes = Buffer.from(match[2], "base64");
+export async function uploadBytes(bytes: Buffer, mime: string) {
+  if (!hasBlobStore()) {
+    return `data:${mime};base64,${bytes.toString("base64")}`;
+  }
   const blob = await put(`wardrobe/${crypto.randomUUID()}.${extensionFor(mime)}`, bytes, {
     access: "public",
     addRandomSuffix: true,
     contentType: mime,
   });
   return blob.url;
+}
+
+export async function uploadDataUrl(dataUrl: string) {
+  if (!dataUrl.startsWith("data:")) return dataUrl;
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return dataUrl;
+  return uploadBytes(Buffer.from(match[2], "base64"), match[1]);
 }
 
 export async function persistItemImages(state: WardrobeState): Promise<WardrobeState> {

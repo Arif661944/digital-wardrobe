@@ -108,12 +108,12 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
       next.src = source;
     });
     const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
-    const scale = Math.min(1, 1600 / longestSide);
+    const scale = Math.min(1, 1280 / longestSide);
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(image.naturalWidth * scale);
     canvas.height = Math.round(image.naturalHeight * scale);
     canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.86);
+    return canvas.toDataURL("image/jpeg", 0.78);
   }
 
   async function onFiles(files: FileList | null) {
@@ -166,7 +166,7 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
           canvas.width = image.naturalWidth;
           canvas.height = image.naturalHeight;
           canvas.getContext("2d")?.drawImage(image, 0, 0);
-          resolve(canvas.toDataURL("image/jpeg", 0.86));
+          resolve(canvas.toDataURL("image/jpeg", 0.78));
         };
         image.onerror = () => reject(new Error("Could not load that image URL."));
         image.src = url;
