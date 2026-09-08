@@ -59,7 +59,9 @@ export type ClothingItem = {
   name: string;
   category: Category;
   color: string;
-  season: Season;
+  seasons: Season[];
+  /** Legacy single season from older saves. Prefer `seasons`. */
+  season?: Season;
   brand: string;
   size: string;
   notes: string;

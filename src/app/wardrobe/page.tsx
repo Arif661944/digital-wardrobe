@@ -8,6 +8,7 @@ import { LoadingScreen, PageHeader } from "@/components/page-header";
 import { Input } from "@/components/ui/input";
 import { useWardrobe } from "@/context/wardrobe-context";
 import { CATEGORIES, COLORS, SEASONS } from "@/lib/types";
+import { formatSeasons, itemMatchesSeason } from "@/lib/seasons";
 
 function parseCategory(value: string | null) {
   if (value && CATEGORIES.includes(value as (typeof CATEGORIES)[number])) {
@@ -50,10 +51,10 @@ function WardrobeGrid() {
       .filter((item) => {
         if (category !== "all" && item.category !== category) return false;
         if (color !== "all" && item.color !== color) return false;
-        if (season !== "all" && item.season !== season) return false;
+        if (season !== "all" && !itemMatchesSeason(item, season)) return false;
         if (favoritesOnly === "yes" && !item.favorite) return false;
         if (!q) return true;
-        return [item.name, item.brand, item.category, item.color, item.notes]
+        return [item.name, item.brand, item.category, item.color, formatSeasons(item), item.notes]
           .join(" ")
           .toLowerCase()
           .includes(q);

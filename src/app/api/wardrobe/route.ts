@@ -28,7 +28,13 @@ export async function PUT(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid wardrobe payload." }, { status: 400 });
   }
-  const persisted = await persistItemImages(state);
-  await writeWardrobe(persisted);
-  return NextResponse.json({ mode: "db", state: persisted });
+  try {
+    const persisted = await persistItemImages(state);
+    await writeWardrobe(persisted);
+    return NextResponse.json({ mode: "db", state: persisted });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not save the wardrobe.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

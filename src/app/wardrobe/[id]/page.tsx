@@ -9,6 +9,7 @@ import { ButtonLink } from "@/components/button-link";
 import { Button } from "@/components/ui/button";
 import { useWardrobe } from "@/context/wardrobe-context";
 import { colorSwatch } from "@/lib/constants";
+import { formatSeasons } from "@/lib/seasons";
 
 export default function ItemDetailPage({
   params,
@@ -89,7 +90,7 @@ export default function ItemDetailPage({
             value={item.color}
             swatch={colorSwatch(item.color)}
           />
-          <Meta label="Season" value={item.season} />
+          <Meta label="Season" value={formatSeasons(item)} />
           {item.brand ? <Meta label="Brand" value={item.brand} /> : null}
           {item.size ? <Meta label="Size" value={item.size} /> : null}
           <Meta

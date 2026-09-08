@@ -1,6 +1,7 @@
 import { STORAGE_KEY } from "./constants";
+import { normalizeItem } from "./seasons";
 import { defaultState } from "./wardrobe-default";
-import type { WardrobeState } from "./types";
+import type { ClothingItem, WardrobeState } from "./types";
 
 export { defaultState };
 
@@ -9,10 +10,17 @@ const STORE = "state";
 
 let cloudEnabled: boolean | null = null;
 
+function normalizeState(state: WardrobeState): WardrobeState {
+  return {
+    ...state,
+    items: state.items.map((item) => normalizeItem(item as ClothingItem)),
+  };
+}
+
 function parseState(raw: string): WardrobeState | null {
   try {
     const parsed = JSON.parse(raw) as Partial<WardrobeState>;
-    return {
+    return normalizeState({
       items: Array.isArray(parsed.items) ? parsed.items : defaultState().items,
       outfits: Array.isArray(parsed.outfits)
         ? parsed.outfits
@@ -21,7 +29,7 @@ function parseState(raw: string): WardrobeState | null {
       settings: {
         displayName: parsed.settings?.displayName ?? "love",
       },
-    };
+    });
   } catch {
     return null;
   }
@@ -49,7 +57,11 @@ async function readIndexedDb() {
       .get(STORAGE_KEY);
     request.onsuccess = () => {
       const value = request.result;
-      resolve(value && typeof value === "object" ? (value as WardrobeState) : null);
+      resolve(
+        value && typeof value === "object"
+          ? normalizeState(value as WardrobeState)
+          : null,
+      );
     };
     request.onerror = () => reject(request.error);
   });
@@ -94,7 +106,7 @@ export async function loadState(): Promise<WardrobeState> {
         state?: WardrobeState;
       };
       cloudEnabled = payload.mode === "db";
-      if (cloudEnabled && payload.state) return payload.state;
+      if (cloudEnabled && payload.state) return normalizeState(payload.state);
     } else {
       cloudEnabled = false;
     }
@@ -104,18 +116,29 @@ export async function loadState(): Promise<WardrobeState> {
   return loadLocal();
 }
 
-export async function saveState(state: WardrobeState) {
+export async function saveState(state: WardrobeState): Promise<WardrobeState | void> {
   if (typeof window === "undefined") return;
+  const normalized = normalizeState(state);
   if (cloudEnabled) {
-    const response = await fetch("/api/wardrobe", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state),
-    });
-    if (!response.ok) {
-      throw new Error("Could not save the wardrobe to the database.");
+    try {
+      const response = await fetch("/api/wardrobe", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(normalized),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { state?: WardrobeState; error?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not save the wardrobe to the database.");
+      }
+      const persisted = payload?.state ? normalizeState(payload.state) : normalized;
+      await writeIndexedDb(persisted).catch(() => undefined);
+      return persisted;
+    } catch (error) {
+      await writeIndexedDb(normalized);
+      throw error;
     }
-    return;
   }
-  await writeIndexedDb(state);
+  await writeIndexedDb(normalized);
 }

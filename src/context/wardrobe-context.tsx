@@ -10,6 +10,7 @@ import {
 } from "react";
 import { loadState, saveState } from "@/lib/storage";
 import { SAMPLE_ITEMS, SAMPLE_OUTFITS } from "@/lib/sample-data";
+import { normalizeItem } from "@/lib/seasons";
 import { toast } from "sonner";
 import type {
   CalendarEntry,
@@ -42,6 +43,21 @@ function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+function mergePersistedUrls(current: WardrobeState, persisted: WardrobeState): WardrobeState {
+  const byId = new Map(persisted.items.map((item) => [item.id, item]));
+  let changed = false;
+  const items = current.items.map((item) => {
+    const remote = byId.get(item.id);
+    if (!remote) return item;
+    if (item.image.startsWith("data:") && remote.image.startsWith("http")) {
+      changed = true;
+      return { ...item, image: remote.image, images: remote.images };
+    }
+    return item;
+  });
+  return changed ? { ...current, items } : current;
+}
+
 export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<WardrobeState>({
     items: [],
@@ -66,19 +82,28 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     const timer = window.setTimeout(() => {
-      void saveState(state).catch(() => {
-        toast.error("Could not save the wardrobe. Check the database connection.");
-      });
+      void saveState(state)
+        .then((persisted) => {
+          if (!persisted) return;
+          setState((current) => mergePersistedUrls(current, persisted));
+        })
+        .catch((error) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Could not save the wardrobe. Check the database connection.";
+          toast.error(message);
+        });
     }, 600);
     return () => window.clearTimeout(timer);
   }, [ready, state]);
 
   const addItem = useCallback((item: Omit<ClothingItem, "id" | "createdAt">) => {
-    const next: ClothingItem = {
+    const next: ClothingItem = normalizeItem({
       ...item,
       id: createId("item"),
       createdAt: new Date().toISOString(),
-    };
+    });
     setState((prev) => ({ ...prev, items: [next, ...prev.items] }));
     return next;
   }, []);
@@ -87,7 +112,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => ({
       ...prev,
       items: prev.items.map((item) =>
-        item.id === id ? { ...item, ...patch, id: item.id } : item,
+        item.id === id ? normalizeItem({ ...item, ...patch, id: item.id }) : item,
       ),
     }));
   }, []);

@@ -61,9 +61,5 @@ export async function convertToSticker(image: string) {
   } catch {
     sticker = data.image;
   }
-  try {
-    return await persistImage(sticker);
-  } catch {
-    return sticker;
-  }
+  return persistImage(sticker);
 }

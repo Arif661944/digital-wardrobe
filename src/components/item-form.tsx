@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ImagePlus, Trash2 } from "lucide-react";
+import { Check, ImagePlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,9 +10,11 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { AppSelect } from "@/components/app-select";
 import { ItemImage } from "@/components/item-image";
-import { convertToSticker, stickerApiConfigured } from "@/lib/to-sticker";
+import { itemSeasons, toggleSeasonSelection } from "@/lib/seasons";
+import { convertToSticker, persistImage, stickerApiConfigured } from "@/lib/to-sticker";
 import { CATEGORIES, COLORS, SEASONS } from "@/lib/types";
 import type { ClothingItem } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export type ItemFormValues = Omit<ClothingItem, "id" | "createdAt">;
 
@@ -23,7 +25,7 @@ const emptyValues = (): ItemFormValues => ({
   name: "",
   category: "Tops",
   color: "Ivory",
-  season: "All Season",
+  seasons: ["All Season"],
   brand: "",
   size: "",
   notes: "",
@@ -45,7 +47,7 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
           name: initial.name,
           category: initial.category,
           color: initial.color,
-          season: initial.season,
+          seasons: itemSeasons(initial),
           brand: initial.brand,
           size: initial.size,
           notes: initial.notes,
@@ -61,6 +63,7 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
   );
   const fileRef = useRef<HTMLInputElement>(null);
   const [converting, setConverting] = useState(false);
+  const [makeSticker, setMakeSticker] = useState(true);
   const [apiReady, setApiReady] = useState<boolean | null>(null);
   const [imageUrl, setImageUrl] = useState(
     initial?.image && !initial.image.startsWith("data:") ? initial.image : "",
@@ -70,12 +73,15 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
     void stickerApiConfigured().then(setApiReady);
   }, []);
 
-  async function asSticker(image: string) {
+  async function preparePhoto(image: string) {
+    if (!makeSticker) return persistImage(image);
     try {
       return await convertToSticker(image);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
-      if (message.includes("OPENAI_API_KEY")) return image;
+      if (message.includes("OPENAI_API_KEY") || message.includes("not configured")) {
+        return persistImage(image);
+      }
       throw error;
     }
   }
@@ -130,7 +136,7 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
     setConverting(true);
     try {
       const compressed = await Promise.all(selected.map(readAndCompress));
-      const newPhotos = await Promise.all(compressed.map(asSticker));
+      const newPhotos = await Promise.all(compressed.map(preparePhoto));
       setValues((prev) => {
         const images = [...(prev.images ?? []), ...newPhotos];
         return { ...prev, image: prev.image || images[0] || "", images };
@@ -165,7 +171,7 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
         image.onerror = () => reject(new Error("Could not load that image URL."));
         image.src = url;
       });
-      const sticker = await asSticker(loaded);
+      const sticker = await preparePhoto(loaded);
       setValues((prev) => ({
         ...prev,
         image: sticker,
@@ -199,16 +205,53 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
           toast.error("Give this piece a name.");
           return;
         }
-        onSubmit({
-          ...values,
-          name: values.name.trim(),
-          brand: values.brand.trim(),
-          size: values.size.trim(),
-          notes: values.notes.trim(),
-        });
+        void (async () => {
+          setConverting(true);
+          try {
+            const photos = values.images?.length
+              ? values.images
+              : values.image
+                ? [values.image]
+                : [];
+            const stored = photos.length
+              ? await Promise.all(photos.map(persistImage))
+              : [];
+            const coverIndex = Math.max(0, photos.indexOf(values.image));
+            const cover = stored[coverIndex] ?? stored[0] ?? "";
+            onSubmit({
+              ...values,
+              name: values.name.trim(),
+              brand: values.brand.trim(),
+              size: values.size.trim(),
+              notes: values.notes.trim(),
+              seasons: values.seasons.length ? values.seasons : ["All Season"],
+              image: cover,
+              images: stored,
+            });
+          } catch (error) {
+            toast.error(
+              error instanceof Error ? error.message : "Could not save these photos.",
+            );
+          } finally {
+            setConverting(false);
+          }
+        })();
       }}
     >
       <div className="space-y-4">
+        <div className="flex items-center justify-between rounded-2xl bg-card px-4 py-3 ring-1 ring-foreground/6">
+          <div>
+            <p className="text-sm font-medium">Sticker cutout</p>
+            <p className="text-sm text-muted-foreground">
+              Turn off to add a photo as-is for testing.
+            </p>
+          </div>
+          <Switch
+            checked={makeSticker}
+            onCheckedChange={(checked) => setMakeSticker(Boolean(checked))}
+            aria-label="Sticker cutout"
+          />
+        </div>
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
@@ -225,13 +268,17 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
               <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
                 <p className="font-heading text-2xl">Add photos</p>
                 <p className="text-sm text-muted-foreground">
-                  ChatGPT will keep only the garment as a sticker.
+                  {makeSticker
+                    ? "ChatGPT will keep only the garment as a sticker."
+                    : "Photos are saved as they are, without a sticker cutout."}
                 </p>
               </div>
             )}
             {converting ? (
               <div className="absolute inset-0 flex items-center justify-center bg-[#f7f1e8]/80">
-                <p className="font-heading text-xl">Cutting sticker…</p>
+                <p className="font-heading text-xl">
+                  {makeSticker ? "Cutting sticker…" : "Adding photo…"}
+                </p>
               </div>
             ) : null}
           </div>
@@ -296,13 +343,15 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
             onChange={(event) => setImageUrl(event.target.value)}
             onBlur={() => void convertPastedUrl()}
           />
-          {apiReady === false ? (
+          {makeSticker && apiReady === false ? (
             <p className="text-sm text-muted-foreground">
               Paste your OpenAI key in `.env.local` as `OPENAI_API_KEY`, then restart the app.
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              New photos are isolated with ChatGPT so only the garment remains.
+              {makeSticker
+                ? "New photos are isolated with ChatGPT so only the garment remains."
+                : "Sticker cutout is off. Photos will be stored without OpenAI."}
             </p>
           )}
         </div>
@@ -320,34 +369,58 @@ export function ItemForm({ initial, submitLabel, onSubmit }: Props) {
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
-            <AppSelect
-              id="category"
-              value={values.category}
-              onValueChange={(value) =>
-                update("category", value as ItemFormValues["category"])
-              }
-              items={CATEGORIES.map((category) => ({
-                value: category,
-                label: category,
-              }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="season">Season</Label>
-            <AppSelect
-              id="season"
-              value={values.season}
-              onValueChange={(value) =>
-                update("season", value as ItemFormValues["season"])
-              }
-              items={SEASONS.map((season) => ({
-                value: season,
-                label: season,
-              }))}
-            />
+        <div className="space-y-2">
+          <Label htmlFor="category">Category</Label>
+          <AppSelect
+            id="category"
+            value={values.category}
+            onValueChange={(value) =>
+              update("category", value as ItemFormValues["category"])
+            }
+            items={CATEGORIES.map((category) => ({
+              value: category,
+              label: category,
+            }))}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Seasons</Label>
+          <p className="text-sm text-muted-foreground">
+            Tick every season this piece can be worn.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {SEASONS.map((season) => {
+              const checked = values.seasons.includes(season);
+              return (
+                <button
+                  key={season}
+                  type="button"
+                  onClick={() =>
+                    update("seasons", toggleSeasonSelection(values.seasons, season))
+                  }
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm ring-1 transition",
+                    checked
+                      ? "bg-foreground text-background ring-foreground"
+                      : "bg-card text-foreground ring-foreground/10 hover:ring-foreground/25",
+                  )}
+                  aria-pressed={checked}
+                >
+                  <span
+                    className={cn(
+                      "inline-flex size-4 items-center justify-center rounded-sm border",
+                      checked
+                        ? "border-background/40 bg-background text-foreground"
+                        : "border-foreground/25",
+                    )}
+                  >
+                    {checked ? <Check className="size-3" strokeWidth={3} /> : null}
+                  </span>
+                  {season}
+                </button>
+              );
+            })}
           </div>
         </div>
 

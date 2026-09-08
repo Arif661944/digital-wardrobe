@@ -4,8 +4,18 @@ import Link from "next/link";
 import { Heart } from "lucide-react";
 import { ItemImage } from "@/components/item-image";
 import { colorSwatch } from "@/lib/constants";
+import { formatSeasons } from "@/lib/seasons";
 import type { ClothingItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+function isCutoutImage(src: string) {
+  return (
+    src.startsWith("data:image/png") ||
+    src.startsWith("data:image/webp") ||
+    src.includes(".png") ||
+    src.includes(".webp")
+  );
+}
 
 type Props = {
   item: ClothingItem;
@@ -23,7 +33,7 @@ export function ClothingCard({ item, onToggleFavorite }: Props) {
           <ItemImage
             src={item.image}
             alt={item.name}
-            className={`h-full w-full transition duration-700 group-hover:scale-[1.04] ${item.image.startsWith("data:image/png") ? "object-contain p-4" : "object-cover"}`}
+            className={`h-full w-full transition duration-700 group-hover:scale-[1.04] ${isCutoutImage(item.image) ? "object-contain p-4" : "object-cover"}`}
           />
           <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/25 via-transparent to-transparent opacity-80" />
         </div>
@@ -41,7 +51,7 @@ export function ClothingCard({ item, onToggleFavorite }: Props) {
             />
             <span>{item.color}</span>
             <span className="text-foreground/20">·</span>
-            <span>{item.season}</span>
+            <span>{formatSeasons(item)}</span>
           </div>
         </div>
       </Link>
