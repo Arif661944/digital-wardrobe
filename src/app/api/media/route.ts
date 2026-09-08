@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { hasBlobStore, hasDatabase, uploadBytes, uploadDataUrl } from "@/lib/db";
+import {
+  hasBlobStore,
+  hasDatabase,
+  uploadBlobFile,
+  uploadDataUrl,
+} from "@/lib/db";
 
 export const maxDuration = 60;
 
@@ -7,7 +12,19 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
-async function storeImage(bytes: Buffer, mime: string) {
+function isUpload(value: FormDataEntryValue | null): value is File {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "arrayBuffer" in value &&
+      typeof (value as File).arrayBuffer === "function" &&
+      typeof (value as File).size === "number" &&
+      (value as File).size > 0,
+  );
+}
+
+async function storeFile(file: Blob) {
+  const mime = file.type || "image/jpeg";
   if (!hasBlobStore()) {
     if (hasDatabase()) {
       return jsonError(
@@ -15,11 +32,12 @@ async function storeImage(bytes: Buffer, mime: string) {
         503,
       );
     }
+    const bytes = Buffer.from(await file.arrayBuffer());
     return NextResponse.json({
       url: `data:${mime};base64,${bytes.toString("base64")}`,
     });
   }
-  const url = await uploadBytes(bytes, mime);
+  const url = await uploadBlobFile(file, mime);
   return NextResponse.json({ url });
 }
 
@@ -30,12 +48,10 @@ export async function POST(request: Request) {
     if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
       const file = form.get("image");
-      if (!(file instanceof File) || file.size === 0) {
+      if (!isUpload(file)) {
         return jsonError("Missing image.", 400);
       }
-      const mime = file.type || "image/jpeg";
-      const bytes = Buffer.from(await file.arrayBuffer());
-      return await storeImage(bytes, mime);
+      return await storeFile(file);
     }
 
     const payload = (await request.json()) as { image?: string };
@@ -52,7 +68,11 @@ export async function POST(request: Request) {
     }
     const url = await uploadDataUrl(image);
     return NextResponse.json({ url });
-  } catch {
-    return jsonError("Could not store this photo.", 400);
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "Could not store this photo.";
+    return jsonError(message, 500);
   }
 }

@@ -8,8 +8,16 @@ export function hasDatabase() {
   return Boolean(process.env.DATABASE_URL?.trim());
 }
 
+export function blobToken() {
+  return (
+    process.env.BLOB_READ_WRITE_TOKEN?.trim() ||
+    process.env.VERCEL_BLOB_READ_WRITE_TOKEN?.trim() ||
+    ""
+  );
+}
+
 export function hasBlobStore() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
+  return Boolean(blobToken());
 }
 
 function sqlClient() {
@@ -83,11 +91,34 @@ export async function uploadBytes(bytes: Buffer, mime: string) {
   if (!hasBlobStore()) {
     return `data:${mime};base64,${bytes.toString("base64")}`;
   }
-  const blob = await put(`wardrobe/${crypto.randomUUID()}.${extensionFor(mime)}`, bytes, {
-    access: "public",
-    addRandomSuffix: true,
-    contentType: mime,
-  });
+  const blob = await put(
+    `wardrobe/${crypto.randomUUID()}.${extensionFor(mime)}`,
+    bytes,
+    {
+      access: "public",
+      addRandomSuffix: true,
+      contentType: mime || "image/jpeg",
+      token: blobToken(),
+    },
+  );
+  return blob.url;
+}
+
+export async function uploadBlobFile(file: Blob, mime = file.type || "image/jpeg") {
+  if (!hasBlobStore()) {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    return `data:${mime};base64,${bytes.toString("base64")}`;
+  }
+  const blob = await put(
+    `wardrobe/${crypto.randomUUID()}.${extensionFor(mime)}`,
+    file,
+    {
+      access: "public",
+      addRandomSuffix: true,
+      contentType: mime,
+      token: blobToken(),
+    },
+  );
   return blob.url;
 }
 
